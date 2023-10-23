@@ -1,0 +1,15 @@
+[package]
+name = "gordian-profiler"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+clap = { version = "4.4.6", features = ["derive"] }
+z3tracer = { git = "https://github.com/verus-lang/smt2utils.git", rev = "ec4c894d04d7cd39c9a8aa1eda51db71cc54fe61" }
+egui_graphs = { version = "0", features = ["egui_persistence"]}
+egui = {version="0.23", features = ["persistence"]}
+eframe = "0.23"
+petgraph = "0.6.4"
