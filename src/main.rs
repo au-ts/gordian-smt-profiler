@@ -1,9 +1,6 @@
 use anyhow;
 use anyhow::Error;
-use std::io::{BufRead};
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet}; use std::io::BufRead;
 
 use z3tracer::{
     model::QuantCost,
@@ -11,9 +8,9 @@ use z3tracer::{
     Model, ModelConfig,
 };
 
+use eframe::{run_native, App, CreationContext};
 use egui;
 use egui::Context;
-use eframe::{run_native, App, CreationContext};
 
 use egui_graphs::{Graph, GraphView};
 use petgraph::{stable_graph::StableGraph, Directed};
@@ -27,7 +24,7 @@ struct Args {
     file: std::path::PathBuf,
 
     #[arg(short, long)]
-    gui: bool
+    gui: bool,
 }
 
 fn process_file(path: &std::path::Path) -> anyhow::Result<Model> {
@@ -45,11 +42,14 @@ fn process_file(path: &std::path::Path) -> anyhow::Result<Model> {
 
     let mut model = Model::new(model_config);
 
-    let e = Error::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid path"));
-    
+    let e = Error::new(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "Invalid path",
+    ));
+
     let p: Option<String> = match path.to_str() {
         Some(pa) => Some(pa.to_owned()),
-        None => return Err(e)
+        None => return Err(e),
     };
 
     model.process(p, file, line_count)?;
@@ -70,21 +70,20 @@ pub struct Profiler {
 }
 
 impl Profiler {
-
     pub fn parse(filename: &std::path::Path) -> anyhow::Result<Self> {
         let model = process_file(filename)?;
 
         let graph = Self::make_instantiation_graph(&model);
 
         let quant_costs = model.quant_costs();
-        let mut user_quant_costs = quant_costs
-                .into_iter()
-                .collect::<Vec<_>>();
+        let mut user_quant_costs = quant_costs.into_iter().collect::<Vec<_>>();
         user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
         user_quant_costs.reverse();
 
-        Ok(Profiler { quantifier_stats: user_quant_costs, instantiation_graph: graph })
-
+        Ok(Profiler {
+            quantifier_stats: user_quant_costs,
+            instantiation_graph: graph,
+        })
     }
 
     fn make_instantiation_graph(model: &Model) -> InstantiationGraph {
@@ -174,17 +173,20 @@ impl Profiler {
         }
     }
     pub fn total_instantiations(&self) -> u64 {
-        self.quantifier_stats.iter().fold(0, |acc, cost| acc + cost.instantiations)
+        self.quantifier_stats
+            .iter()
+            .fold(0, |acc, cost| acc + cost.instantiations)
     }
 
     pub fn print_stats(&self) {
         for cost in &self.quantifier_stats {
             let count = cost.instantiations;
-            let msg = format!("Instantiated {} {} times ({}% of the total) \n",
-                                cost.quant,
-                                count,
-                                100 * count / self.total_instantiations()
-                              );
+            let msg = format!(
+                "Instantiated {} {} times ({}% of the total) \n",
+                cost.quant,
+                count,
+                100 * count / self.total_instantiations()
+            );
             println!("{}", msg);
         }
     }
@@ -239,6 +241,7 @@ fn main() -> anyhow::Result<()> {
         "SMT quantifier instantiations graph",
         native_options,
         Box::new(|cc| Box::new(BasicApp::new(cc))),
-    ).unwrap();
+    )
+    .unwrap();
     Ok(())
 }
