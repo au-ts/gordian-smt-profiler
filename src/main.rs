@@ -1,6 +1,7 @@
 use anyhow;
 use anyhow::Error;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet}; use std::io::BufRead;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::BufRead;
 
 use z3tracer::{
     model::QuantCost,
@@ -10,9 +11,12 @@ use z3tracer::{
 
 use eframe::{run_native, App, CreationContext};
 use egui;
-use egui::Context;
+use egui::{
+    Context,
+    epaint::TextShape, FontFamily, FontId, Rect, Rounding,Shape, Stroke, Vec2
+};
 
-use egui_graphs::{Graph, GraphView};
+use egui_graphs::{Graph, GraphView, SettingsInteraction};
 use petgraph::{stable_graph::StableGraph, Directed};
 
 use clap::Parser;
@@ -193,34 +197,80 @@ impl Profiler {
 }
 
 pub struct BasicApp {
-    g: Graph<(), (), Directed>,
+    g: Graph<NodeData, (), Directed>,
 }
 
 impl BasicApp {
-    fn new(_: &CreationContext<'_>) -> Self {
-        let g = generate_graph();
+    fn new(_: &CreationContext<'_>, profiler: Profiler) -> Self {
+        let g = generate_graph(&profiler);
         Self { g: Graph::from(&g) }
     }
 }
 
-fn generate_graph() -> StableGraph<(), (), Directed> {
-    let mut g: StableGraph<(), ()> = StableGraph::new();
+type NodeData = ((u64, usize), String);
 
-    let a = g.add_node(());
-    let b = g.add_node(());
-    let c = g.add_node(());
+fn generate_graph<'a>(profiler: &'a Profiler) -> StableGraph<NodeData, (), Directed> {
+    let mut g: StableGraph<NodeData, ()> = StableGraph::new();
+    let mut nodes = HashMap::new();
+    for node in &profiler.instantiation_graph.nodes {
+        let name = profiler.instantiation_graph.names.get(node).unwrap().to_owned();
+        let g_node = g.add_node((node.clone(), name));
+        nodes.insert(node.clone(), g_node);
+    }
 
-    g.add_edge(a, b, ());
-    g.add_edge(b, c, ());
-    g.add_edge(c, a, ());
-
+    for (src, dsts) in &profiler.instantiation_graph.edges {
+        let g_src = nodes.get(src).unwrap();
+        for dst in dsts {
+            let g_dst = nodes.get(dst).unwrap();
+            g.add_edge(g_src.clone(), g_dst.clone(), ());
+        }
+    }
     g
 }
 
 impl App for BasicApp {
     fn update(&mut self, ctx: &Context, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add(&mut GraphView::new(&mut self.g));
+            ui.add(
+                &mut GraphView::new(&mut self.g).with_interactions(
+                    &SettingsInteraction::default()
+                        .with_dragging_enabled(true)
+                        .with_selection_enabled(true),
+                ).with_custom_node_draw(|ctx, n, state, l| {
+                    let node_centre_loc = n.screen_location(state.meta).to_pos2();
+                                            let rad = n.screen_radius(state.meta, state.style);
+
+                        // first create rect shape
+                        let size = Vec2::new(rad * 1.5, rad * 1.5);
+                        let rect = Rect::from_center_size(node_centre_loc, size);
+                        let shape_rect = Shape::rect_stroke(
+                            rect,
+                            Rounding::default(),
+                            Stroke::new(1., n.color(ctx)),
+                        );
+
+                        // add rect to the layers
+                        l.add(shape_rect);
+
+                        // then create label
+                        let color = ctx.style().visuals.text_color();
+                        let galley = ctx.fonts(|f| {
+                            f.layout_no_wrap(
+                                n.data().unwrap().1.to_owned(),
+                                FontId::new(rad, FontFamily::Monospace),
+                                color,
+                            )
+                        });
+
+                        // we need to offset label by half its size to place it in the center of the rect
+                        let offset = Vec2::new(-galley.size().x / 2., -galley.size().y / 2.);
+
+                        // create the shape and add it to the layers
+                        let shape_label = TextShape::new(node_centre_loc + offset, galley);
+                        l.add(shape_label);
+
+                }),
+            );
         });
     }
 }
@@ -228,11 +278,14 @@ impl App for BasicApp {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let profiler = Profiler::parse(&args.file)?;
+    println!("EDGES: ");
+    println!("{:?}\n\n", profiler.instantiation_graph.edges);
+    println!("NODE NAMES: ");
+    println!("{:?}\n\n", profiler.instantiation_graph.names);
+    println!("NODES: ");
+    println!("{:?}", profiler.instantiation_graph.nodes);
+    profiler.print_stats();
     if !args.gui {
-        println!("{:?}\n\n", profiler.instantiation_graph.edges);
-        println!("{:?}\n\n", profiler.instantiation_graph.names);
-        println!("{:?}", profiler.instantiation_graph.nodes);
-        profiler.print_stats();
         return Ok(());
     }
 
@@ -240,7 +293,7 @@ fn main() -> anyhow::Result<()> {
     run_native(
         "SMT quantifier instantiations graph",
         native_options,
-        Box::new(|cc| Box::new(BasicApp::new(cc))),
+        Box::new(|cc| Box::new(BasicApp::new(cc, profiler))),
     )
     .unwrap();
     Ok(())
