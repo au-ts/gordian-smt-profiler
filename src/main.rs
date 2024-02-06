@@ -18,17 +18,26 @@ use egui::{
 
 use egui_graphs::{Graph, GraphView, SettingsInteraction};
 use petgraph::{stable_graph::StableGraph, Directed};
+use petgraph::dot::{Dot, Config};
+use std::fs::File;
+use std::io::prelude::*;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Gui,
+    Dot
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short, long)]
     file: std::path::PathBuf,
-
-    #[arg(short, long)]
-    gui: bool,
+    
+    #[command(subcommand)]
+    cmd: Commands,
 }
 
 fn process_file(path: &std::path::Path) -> anyhow::Result<Model> {
@@ -285,7 +294,13 @@ fn main() -> anyhow::Result<()> {
     println!("NODES: ");
     println!("{:?}", profiler.instantiation_graph.nodes);
     profiler.print_stats();
-    if !args.gui {
+
+    if let Commands::Dot = args.cmd {
+        let graph = generate_graph(&profiler);
+        let graph_data = Dot::with_config(&graph, &[]);
+        let txt = format!("{:?}", graph_data);
+        let mut file = File::create("graph.dot")?;
+        file.write_all(txt.as_bytes())?;
         return Ok(());
     }
 
